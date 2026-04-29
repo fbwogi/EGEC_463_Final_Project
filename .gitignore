@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+
+#Virtual environments
+plotenv/
+ppg_env/
+venv/
+
+#OS
+.DS_Store
+
+
