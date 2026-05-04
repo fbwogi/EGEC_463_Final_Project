@@ -30,7 +30,7 @@ class Config:
     csv_filename: str = "project_heart_rate_data.csv"
     print_interval_seconds: float = 0.5
     duration_seconds: int = 60  # Set to None for indefinite monitoring
-
+    enable_live_plot: bool = True
 CFG = Config()
 
 #sensor reader
@@ -162,26 +162,77 @@ class HeartRateMonitor:
         self.running = True
         self.start_time = time.time()
         self.last_print_time = 0.0
+        if self.config.enable_live_plot:
+            self.live_plot()
 
     def stop(self, *_args):
         self.running = False
 
-    def print_dashboard(self, selected_raw: int, filtered_latest: Optional[float], bpm: Optional[float], signal_quality: str):
+    def print_dashboard(self, current_time: float, selected_raw: int, filtered_latest: Optional[float], bpm: Optional[float], signal_quality: str):
         sys.stdout.write("\033[2J\033[H")
+        bpm_text = f"{bpm:.2f}" if bpm is not None else "Calculating..."
         sys.stdout.flush()
         print("------------------------------------------")
         print(" Raspberry Pi PPG Heart Rate Monitor ")
         print("------------------------------------------")
+        print(f"Time                : {current_time:.2f}s")
+        print("------------------------------------------")
+        print(f"Sensor              : MAX30102")
         print(f"Selected Channel    : {'Red' if self.config.use_red_channel else 'IR'}")
-        print(f"Sample Rate         : {self.config.sample_rate_hz} Hz | Window: {self.config.window_seconds}s")
+        print(f"Sample Rate         : {self.config.sample_rate_hz} Hz ")
+        print(f"Window Size         : {self.config.window_seconds} s")
         print("------------------------------------------")
         print(f"Latest Raw Value    : {selected_raw}")
         print(f"Latest Filtered     : {filtered_latest:.2f}" if filtered_latest is not None else "Latest Filtered     : N/A")
-        print(f"Estimated BPM       : {bpm:.2f}" if bpm is not None else "Estimated BPM       : Calculating...")
+        print(f"Estimated BPM       : {bpm_text}")
         print(f"Signal Quality      : {signal_quality}")
         print("------------------------------------------") 
         print(f"CSV Log File       : {self.config.csv_filename}")
         print("Press Ctrl+C to stop the monitor")
+        print(f"------------------------------------------")
+
+    def live_plot(self):
+        plt.ion()
+        self.fig, (self.ax_raw, self.ax_filtered, self.ax_bpm) = plt.subplots(3, 1, figsize=(10, 8))
+
+        self.raw_line, = self.ax_raw.plot([], [])
+        self.filtered_line, = self.ax_filtered.plot([], [])
+        self.bpm_line, = self.ax_bpm.plot([], [])
+
+        self.ax_raw.set_title("Live Raw PPG Signal")
+        self.ax_raw.set_ylabel("Raw IR")
+
+        self.ax_filtered.set_title("Live Filtered PPG Signal")
+        self.ax_filtered.set_ylabel("Filtered")
+
+        self.ax_bpm.set_title("Live BPM Trend")
+        self.ax_bpm.set_xlabel("Time (s)")
+        self.ax_bpm.set_ylabel("BPM")
+
+        self.live_times = deque(maxlen=self.max_samples)
+        self.live_raw = deque(maxlen=self.max_samples)
+        self.live_filtered = deque(maxlen=self.max_samples)
+        self.live_bpm = deque(maxlen=self.max_samples)
+
+    def update_plot(self, current_time: float, raw: int, filtered: float, bpm: float):
+        self.live_times.append(current_time)
+        self.live_raw.append(raw)
+        self.live_filtered.append(filtered)
+        self.live_bpm.append(bpm)
+
+        self.raw_line.set_data(list(self.live_times), list(self.live_raw))
+        self.filtered_line.set_data(list(self.live_times), list(self.live_filtered))
+        self.bpm_line.set_data(list(self.live_times), list(self.live_bpm))
+
+        self.ax_raw.relim()
+        self.ax_raw.autoscale_view()
+        self.ax_filtered.relim()
+        self.ax_filtered.autoscale_view()
+        self.ax_bpm.relim()
+        self.ax_bpm.autoscale_view()
+
+        plt.pause(0.001)
+
 
     def run(self):
         signal.signal(signal.SIGINT, self.stop)
@@ -226,15 +277,20 @@ class HeartRateMonitor:
                         bpm = float(np.average(self.bpm_smooth_buffer, weights=weights))
                     
                     signal_quality = get_signal_quality(raw_window, filtered_window, peaks)
+                    filtered_latest = float(filtered_window[-1]) if len(filtered_window) > 0 else None
 
                     if current_time - self.last_print_time >= self.config.print_interval_seconds:
-                        bpm_text = f"{bpm:.2f}" if bpm is not None else "Calculating..."
-                        print(f"Time: {current_time:.2f}s | BPM: {bpm_text} | Signal Quality: {signal_quality}")
+                        #bpm_text = f"{bpm:.2f}" if bpm is not None else "Calculating..."
+                        #print(f"Time: {current_time:.2f}s | BPM: {bpm_text} | Signal Quality: {signal_quality}")
+                        self.print_dashboard(current_time, selected_raw, filtered_latest, bpm, signal_quality)
                         self.last_print_time = current_time
 
-                    filtered_latest = float(filtered_window[-1]) if len(filtered_window) > 0 else None
+                    #filtered_latest = float(filtered_window[-1]) if len(filtered_window) > 0 else None
                     self.logger.write(current_time, red_raw, ir_raw, selected_raw, filtered_latest, bpm, signal_quality)
 
+                    if self.config.enable_live_plot:
+                        self.update_plot(current_time, selected_raw, filtered_latest, bpm)
+                        
                 time.sleep(1 / self.config.sample_rate_hz)
         except KeyboardInterrupt:
             print("Shutting down gracefully...")
