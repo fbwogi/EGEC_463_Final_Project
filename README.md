@@ -1,3 +1,5 @@
+Based on the max30102 repo I found in the following repo, I created a heart rate monitor that converts PPG to BPM and uses signal processing techniques to better quantify measurements and generate graphs. 
+
 # max30102
 MAX30102 Pulse Oximetry Sensor code for Raspberry Pi
 
