@@ -29,6 +29,48 @@ peaks, _ = find_peaks(
     prominence=np.std(filtered) * 0.5
 )
 
+signal = filtered
+fs = 25  # Sample rate in Hz
+
+n_fft = 1024
+fft_vals = np.abs(np.fft.rfft(signal * np.hamming(len(signal)), n=n_fft))
+freq = np.fft.rfftfreq(n_fft, 1/fs)
+
+mask = (freq >= 0) & (freq <= 3.0)
+plt.figure(figsize=(12, 5))
+plt.plot(freq[mask], fft_vals[mask], linewidth=2)
+
+plt.title("Filtered PPG Frequency Spectrum")
+plt.xlabel("Frequency (Hz)")
+plt.ylabel("Magnitude")
+
+plt.grid(True)
+plt.tight_layout()
+
+plt.savefig(os.path.join(output_dir, "ppg_frequency_spectrum.png"), dpi=300)
+plt.show()
+
+# Raw PPG frequency spectrum
+fs = 25
+n_fft = 1024
+
+raw_centered = raw - np.mean(raw)
+raw_windowed = raw_centered * np.hamming(len(raw_centered))
+
+raw_fft_vals = np.abs(np.fft.rfft(raw_windowed, n=n_fft))
+raw_freq = np.fft.rfftfreq(n_fft, d=1/fs)
+
+mask = (raw_freq >= 0) & (raw_freq <= 5)
+
+plt.figure(figsize=(12, 5))
+plt.plot(raw_freq[mask], raw_fft_vals[mask])
+plt.title("Raw PPG Signal Frequency Spectrum")
+plt.xlabel("Frequency (Hz)")
+plt.ylabel("Magnitude")
+plt.grid(True)
+plt.savefig(os.path.join(output_dir, "project_raw_ppg_frequency_spectrum.png"), dpi=300)
+plt.close()
+
 # Raw PPG
 plt.figure(figsize=(12, 5))
 plt.plot(time, raw)
